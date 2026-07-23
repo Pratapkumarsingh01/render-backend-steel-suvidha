@@ -102,7 +102,7 @@ class AuthController {
       const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-          user: process.env.EMAIL_USER || 'steelsuvidha.patna@gmail.com', 
+          user: process.env.EMAIL_USER || 'manage.steelsuvidha@gmail.com', 
           pass: process.env.EMAIL_PASS
         }
       });
