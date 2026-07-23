@@ -108,7 +108,7 @@ class AuthController {
       });
 
       const mailOptions = {
-        from: `"Steel Suvidha Console" <${process.env.EMAIL_USER || 'steelsuvidha.patna@gmail.com'}>`,
+        from: `"Steel Suvidha Console" <${process.env.EMAIL_USER || 'manage.steelsuvidha@gmail.com'}>`,
         to: userDoc.email,
         subject: '🔒 Your Steel Suvidha Password Reset OTP',
         text: `Hello ${userDoc.name || 'User'},\n\nYour 6-digit Verification OTP for resetting your password is:\n\n👉 ${otp} 👈\n\nThis OTP is valid for 10 minutes. If you did not request this, please ignore this email.\n\nRegards,\nSteel Suvidha Team`,
