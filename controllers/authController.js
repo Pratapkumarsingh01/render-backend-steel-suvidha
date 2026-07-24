@@ -98,13 +98,17 @@ class AuthController {
         }
       );
 
-      // Transporter configuration using standard environment variables
+      // --- ZERO-COST MAIL TRANSMISSION ENGINE (RENDER IPv4 BINDING FIXED) ---
       const transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false, // Upgrades connection via STARTTLS
+        family: 4,     // Forces IPv4 resolution (Fixes Render ENETUNREACH / IPv6 errors)
         auth: {
           user: process.env.EMAIL_USER || 'manage.steelsuvidha@gmail.com', 
           pass: process.env.EMAIL_PASS
-        }
+        },
+        connectionTimeout: 10000,
       });
 
       const mailOptions = {
