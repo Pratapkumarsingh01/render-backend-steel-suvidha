@@ -3,8 +3,7 @@ const bcrypt = require('bcryptjs');
 const { ObjectId } = require('mongodb');
 const database = require('../services/database');
 const User = require('../models/User');
-const nodemailer = require('nodemailer'); 
-const dns = require('dns'); // Node.js built-in DNS module
+const { Resend } = require('resend'); // HTTP Email Client (Bypasses Render SMTP Block)
 
 class AuthController {
   async login(req, res) {
@@ -60,18 +59,17 @@ class AuthController {
     }
   }
 
-  // ─── 🔑 STEP 1: GENERATE & EMAIL 6-DIGIT OTP ───
+  // ─── 🔑 STEP 1: GENERATE & EMAIL 6-DIGIT OTP VIA RESEND HTTP API ───
   async forgotPassword(req, res) {
     try {
       const { identity } = req.body;
       if (!identity) {
-        return res.status(400).json({ error: 'Username or email identifier entry required.' });
+        return res.status(400).json({ error: 'Username or email identifier required.' });
       }
 
       const usersCollection = database.getUsersCollection();
       const cleanIdentity = identity.trim();
       
-      // Case-insensitive regex lookup for username or email
       const userDoc = await usersCollection.findOne({
         $or: [
           { username: { $regex: `^${cleanIdentity}$`, $options: 'i' } },
@@ -85,7 +83,7 @@ class AuthController {
 
       // Generate a clean 6-digit numeric OTP
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // Valid for 10 minutes
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
       // Store OTP and expiry in MongoDB
       await usersCollection.updateOne(
@@ -99,32 +97,27 @@ class AuthController {
         }
       );
 
-      // --- ZERO-COST MAIL TRANSMISSION ENGINE (RENDER IPv4 DNS OVERRIDE FIXED) ---
-      const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 587,
-        secure: false, // Upgrades connection via STARTTLS
-        auth: {
-          user: process.env.EMAIL_USER || 'manage.steelsuvidha@gmail.com', 
-          pass: process.env.EMAIL_PASS
-        },
-        // CUSTOM DNS LOOKUP: Forces resolution strictly to IPv4 addresses (Family 4)
-        // Bypasses Linux/Render IPv6 ENETUNREACH socket routing failures completely
-        lookup: (hostname, options, callback) => {
-          dns.lookup(hostname, { family: 4 }, callback);
-        },
-        connectionTimeout: 15000,
-      });
+      // --- RESEND HTTP API TRANSMISSION ENGINE ---
+      const resend = new Resend(process.env.RESEND_API_KEY);
 
-      const mailOptions = {
-        from: `"Steel Suvidha Console" <${process.env.EMAIL_USER || 'manage.steelsuvidha@gmail.com'}>`,
+      const emailResponse = await resend.emails.send({
+        from: 'Steel Suvidha Console <onboarding@resend.dev>',
         to: userDoc.email,
         subject: '🔒 Your Steel Suvidha Password Reset OTP',
-        text: `Hello ${userDoc.name || 'User'},\n\nYour 6-digit Verification OTP for resetting your password is:\n\n👉 ${otp} 👈\n\nThis OTP is valid for 10 minutes. If you did not request this, please ignore this email.\n\nRegards,\nSteel Suvidha Team`,
-      };
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 24px; background-color: #0a0e29; color: #ffffff; border-radius: 12px; border: 1px solid #1e293b;">
+            <h2 style="color: #ffb300; margin-bottom: 12px;">Steel Suvidha Network</h2>
+            <p style="font-size: 14px; color: #cbd5e1;">Hello <strong>${userDoc.name || 'User'}</strong>,</p>
+            <p style="font-size: 14px; color: #cbd5e1;">Your 6-digit verification code to reset your account password is:</p>
+            <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #ffb300; padding: 16px 0;">
+              ${otp}
+            </div>
+            <p style="color: #64748b; font-size: 12px;">This security OTP is valid for 10 minutes. If you did not request a password reset, please ignore this message.</p>
+          </div>
+        `,
+      });
 
-      await transporter.sendMail(mailOptions);
-      console.log(`📬 OTP [${otp}] sent to: ${userDoc.email}`);
+      console.log(`📬 [Resend OTP Sent] Target: ${userDoc.email} | ID: ${emailResponse.id}`);
 
       res.json({ 
         success: true, 
@@ -165,7 +158,6 @@ class AuthController {
         return res.status(404).json({ error: 'User not found.' });
       }
 
-      // Check if OTP matches and is not expired
       if (!userDoc.resetOtp || userDoc.resetOtp !== otp.trim()) {
         return res.status(400).json({ error: 'Invalid OTP entered. Please check your email.' });
       }
@@ -174,7 +166,6 @@ class AuthController {
         return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
       }
 
-      // Hash new password and clear the OTP fields
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await usersCollection.updateOne(
         { _id: userDoc._id },
@@ -190,7 +181,7 @@ class AuthController {
         }
       );
 
-      console.log(`✅ Password successfully updated for user: ${userDoc.username}`);
+      console.log(`✅ Password updated for user: ${userDoc.username}`);
       res.json({ success: true, message: 'Password updated successfully! You can now log in.' });
 
     } catch (error) {
