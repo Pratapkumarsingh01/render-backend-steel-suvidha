@@ -4,6 +4,7 @@ const { ObjectId } = require('mongodb');
 const database = require('../services/database');
 const User = require('../models/User');
 const nodemailer = require('nodemailer'); 
+const dns = require('dns'); // Node.js built-in DNS module
 
 class AuthController {
   async login(req, res) {
@@ -98,17 +99,21 @@ class AuthController {
         }
       );
 
-      // --- ZERO-COST MAIL TRANSMISSION ENGINE (RENDER IPv4 BINDING FIXED) ---
+      // --- ZERO-COST MAIL TRANSMISSION ENGINE (RENDER IPv4 DNS OVERRIDE FIXED) ---
       const transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
         port: 587,
         secure: false, // Upgrades connection via STARTTLS
-        family: 4,     // Forces IPv4 resolution (Fixes Render ENETUNREACH / IPv6 errors)
         auth: {
           user: process.env.EMAIL_USER || 'manage.steelsuvidha@gmail.com', 
           pass: process.env.EMAIL_PASS
         },
-        connectionTimeout: 10000,
+        // CUSTOM DNS LOOKUP: Forces resolution strictly to IPv4 addresses (Family 4)
+        // Bypasses Linux/Render IPv6 ENETUNREACH socket routing failures completely
+        lookup: (hostname, options, callback) => {
+          dns.lookup(hostname, { family: 4 }, callback);
+        },
+        connectionTimeout: 15000,
       });
 
       const mailOptions = {
